@@ -16,12 +16,15 @@ export default function AuthForm({ mode, code }: { mode: 'login' | 'setup' | 'in
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (mode !== 'login' && !name.trim()) return setErr('Scrivi il tuo nome')
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return setErr('Email non valida')
+    if (mode !== 'login' && password.length < 12) return setErr(`La password deve avere almeno 12 caratteri (ora ${password.length})`)
+    if (!password) return setErr('Scrivi la password')
     setBusy(true)
     setErr(null)
     try {
-      await api(url, 'POST', { email, name, password })
-      router.push('/')
-      router.refresh()
+      await api(url, 'POST', { email: email.trim(), name: name.trim(), password })
+      window.location.href = '/'
     } catch (e: any) {
       setErr(e.message)
     } finally {
@@ -31,7 +34,7 @@ export default function AuthForm({ mode, code }: { mode: 'login' | 'setup' | 'in
 
   return (
     <div className="auth">
-      <form className="panel box" onSubmit={submit}>
+      <form className="panel box" onSubmit={submit} noValidate>
         <div className="mb" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <span className="logo-mark"><i /></span><b>Launch Tracker</b>
