@@ -9,6 +9,11 @@ const run = (cmd, args) => {
   })
   return p
 }
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is not set. On Railway add it in Variables as ${{Postgres.DATABASE_URL}}.')
+  process.exit(1)
+}
+
 // Create or update the schema before the web server takes requests.
 const m = spawnSync('node', ['--experimental-strip-types', '--no-warnings', 'worker/migrate.ts'], { stdio: 'inherit', env: process.env })
 if (m.status !== 0) process.exit(m.status ?? 1)
