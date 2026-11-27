@@ -1,0 +1,32 @@
+{
+  "name": "launch-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "node scripts/start.mjs",
+    "web": "next start -p ${PORT:-3000}",
+    "worker": "node --experimental-strip-types worker/main.ts",
+    "migrate": "node --experimental-strip-types worker/migrate.ts"
+  },
+  "dependencies": {
+    "geist": "^1.9.2",
+    "lightweight-charts": "^5.3.0",
+    "next": "^16.4.6",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "viem": "^2.58.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.3",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
