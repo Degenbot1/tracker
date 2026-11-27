@@ -11,9 +11,9 @@ export default function RightRail({ token, onManage }: { token: any; onManage: (
   const exitUsd = o ? o.exit_native * nUsd : 0
   const s = token.supply
   const parts = [
-    { l: 'Circolante', v: circ, c: '#ededef' },
-    { l: 'Bruciati (indirizzi morti)', v: Number(s.burned_dead) / dec, c: '#f3a63b' },
-    { l: 'Bruciati (0x0)', v: Number(s.burned_zero) / dec, c: '#fb6a74' },
+    { l: 'Circolante', v: circ, c: 'var(--text)' },
+    { l: 'Bruciati (indirizzi morti)', v: Number(s.burned_dead) / dec, c: 'var(--accent)' },
+    { l: 'Bruciati (0x0)', v: Number(s.burned_zero) / dec, c: 'var(--sell)' },
   ]
   const buyShare = token.buys_24h + token.sells_24h ? token.buys_24h / (token.buys_24h + token.sells_24h) : 0.5
 

@@ -1,6 +1,6 @@
 'use client'
 
-const PALETTE = ['#f3a63b', '#34d399', '#7fb4ff', '#c4a1ff', '#fb6a74', '#e58cff']
+const PALETTE = ['var(--accent)', 'var(--buy)', 'var(--info)', 'var(--kol)', 'var(--sell)', 'var(--liq-rem)']
 
 export default function TokenAvatar({ t, dot = false, size }: { t: any; dot?: boolean; size?: number }) {
   const color = PALETTE[(t?.id ?? 0) % PALETTE.length]

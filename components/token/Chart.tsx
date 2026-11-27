@@ -1,4 +1,5 @@
 'use client'
+import { useTheme, chartColors } from '@/components/theme.ts'
 import { useEffect, useRef, useState } from 'react'
 import { createChart, CandlestickSeries, HistogramSeries, createSeriesMarkers, CrosshairMode, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts'
 import { useStored } from '../hooks.ts'
@@ -21,6 +22,8 @@ export default function Chart({ token, refresh }: Props) {
   const [unit, setUnit] = useStored<'usd' | 'native'>('lt.unit', 'usd')
   const [marks, setMarks] = useStored('lt.marks', { owned: true, kol: true, burn: false })
   const [ohlc, setOhlc] = useState<any>(null)
+  const theme = useTheme()
+  const col = chartColors(theme)
   const [lastBar, setLastBar] = useState<any>(null)
 
   const circ = Number(token.supply?.circulating ?? 0) / 10 ** token.decimals
@@ -59,6 +62,16 @@ export default function Chart({ token, refresh }: Props) {
     }
   }, [])
 
+  // Repaint the canvas when the theme changes.
+  useEffect(() => {
+    chart.current?.applyOptions({
+      layout: { textColor: col.text },
+      grid: { horzLines: { color: col.grid } },
+      crosshair: { vertLine: { color: col.cross, labelBackgroundColor: col.label }, horzLine: { color: col.cross, labelBackgroundColor: col.label } },
+    })
+    candles.current?.applyOptions({ upColor: col.up, downColor: col.down, wickUpColor: col.up + '99', wickDownColor: col.down + '99', priceLineColor: col.down })
+  }, [theme])
+
   const fmtRef = useRef(fmt)
   fmtRef.current = fmt
 
@@ -73,13 +86,13 @@ export default function Chart({ token, refresh }: Props) {
       if (dead || !candles.current || !cr?.candles) return
       const data = cr.candles.map((c: any) => ({ time: c.time as UTCTimestamp, open: c.open * k, high: c.high * k, low: c.low * k, close: c.close * k }))
       candles.current.setData(data)
-      volume.current!.setData(cr.candles.map((c: any) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? '#34d39955' : '#fb6a7455' })))
+      volume.current!.setData(cr.candles.map((c: any) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? col.up + '55' : col.down + '55' })))
       setLastBar(cr.candles.at(-1) ?? null)
       const times = new Set(cr.candles.map((c: any) => c.time))
       const m = (Array.isArray(mr) ? mr : [])
         .filter((x: any) => times.has(x.t) && ((x.who === 'owned' && marks.owned) || (x.who === 'kol' && marks.kol) || (x.who === 'burn' && marks.burn)))
         .map((x: any) => {
-          const color = x.who === 'owned' ? '#f3a63b' : x.who === 'kol' ? '#c4a1ff' : '#e58cff'
+          const color = x.who === 'owned' ? col.owned : x.who === 'kol' ? col.kol : col.burn
           if (x.kind === 'burn') return { time: x.t as UTCTimestamp, position: 'aboveBar', color, shape: 'circle', text: '' }
           return {
             time: x.t as UTCTimestamp, position: x.kind === 'buy' ? 'belowBar' : 'aboveBar', color,
@@ -89,7 +102,7 @@ export default function Chart({ token, refresh }: Props) {
       markersApi.current?.setMarkers(m)
       if (athLine.current) candles.current.removePriceLine(athLine.current)
       const ath = token.ath_usd != null ? (unit === 'usd' ? token.ath_usd : token.ath_usd / (token.native_usd || 1)) * k : null
-      athLine.current = ath ? candles.current.createPriceLine({ price: ath, color: '#f3a63b88', lineStyle: 2, lineWidth: 1, axisLabelVisible: true, title: 'ATH' }) : null
+      athLine.current = ath ? candles.current.createPriceLine({ price: ath, color: col.owned + '88', lineStyle: 2, lineWidth: 1, axisLabelVisible: true, title: 'ATH' }) : null
       if (lastTf.current !== `${tf}${mode}${unit}`) {
         lastTf.current = `${tf}${mode}${unit}`
         chart.current?.timeScale().fitContent()
@@ -99,7 +112,7 @@ export default function Chart({ token, refresh }: Props) {
     }
     load()
     return () => { dead = true }
-  }, [token.id, tf, unit, mode, marks.owned, marks.kol, marks.burn, refresh, k, token.ath_usd, token.native_usd])
+  }, [token.id, tf, unit, mode, marks.owned, marks.kol, marks.burn, refresh, k, token.ath_usd, token.native_usd, theme])
 
   useEffect(() => {
     chart.current?.applyOptions({ timeScale: { secondsVisible: tf === '1s' || tf === '15s' } })

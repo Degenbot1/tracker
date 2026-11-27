@@ -285,7 +285,7 @@ function Groups({ token, onClose, onDone }: any) {
       <div style={{ display: 'flex', gap: 6 }}>
         <input className="input" placeholder="Nuovo gruppo" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {COLORS.map((c) => <button key={c} onClick={() => setColor(c)} style={{ width: 16, height: 16, borderRadius: 5, background: c, border: color === c ? '2px solid #fff' : '0', cursor: 'pointer' }} />)}
+          {COLORS.map((c) => <button key={c} onClick={() => setColor(c)} style={{ width: 16, height: 16, borderRadius: 5, background: c, border: color === c ? '2px solid var(--text)' : '0', cursor: 'pointer' }} />)}
         </div>
         <button className="btn primary" onClick={add}>Crea</button>
       </div>
