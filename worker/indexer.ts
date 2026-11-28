@@ -3,6 +3,7 @@ import { decodeAbiParameters, encodeFunctionData, decodeFunctionResult, parseAbi
 import { q, one, tx } from '../lib/db.ts'
 import { chain, ZERO } from '../lib/chains.ts'
 import { rpc, getLogs, rpcBatch, type RawLog } from '../lib/rpc.ts'
+import { multicall, type Read } from '../lib/multicall.ts'
 import { nativeUsdAt } from './prices.ts'
 
 export const TOPIC = {
@@ -47,26 +48,31 @@ export type PoolRow = {
   quote_kind: string
 }
 
-async function call(chainId: number, to: string, data: string): Promise<string> {
-  return rpc<string>(chainId, 'eth_call', [{ to, data }, 'latest'])
-}
+const ERC20_FNS = ['name', 'symbol', 'decimals', 'totalSupply'] as const
 
-export async function readErc20(chainId: number, address: string) {
+const erc20Reads = (address: string): Read[] =>
+  ERC20_FNS.map((fn) => ({ target: address, data: encodeFunctionData({ abi: erc20, functionName: fn }) }))
+
+function decodeErc20(raw: (string | null)[]) {
   const out: Record<string, unknown> = {}
-  for (const fn of ['name', 'symbol', 'decimals', 'totalSupply'] as const) {
+  ERC20_FNS.forEach((fn, i) => {
     try {
-      const raw = await call(chainId, address, encodeFunctionData({ abi: erc20, functionName: fn }))
-      out[fn] = decodeFunctionResult({ abi: erc20, functionName: fn, data: raw as `0x${string}` })
+      out[fn] = raw[i] == null ? null : decodeFunctionResult({ abi: erc20, functionName: fn, data: raw[i] as `0x${string}` })
     } catch {
       out[fn] = null
     }
-  }
+  })
   return {
     name: (out.name as string) ?? null,
     symbol: (out.symbol as string) ?? null,
     decimals: out.decimals == null ? 18 : Number(out.decimals),
     totalSupply: out.totalSupply == null ? null : (out.totalSupply as bigint).toString(),
   }
+}
+
+// name, symbol, decimals and totalSupply in one Multicall3 call.
+export async function readErc20(chainId: number, address: string) {
+  return decodeErc20(await multicall(chainId, erc20Reads(address)))
 }
 
 // Creates the token row; history is rebuilt by the worker from the first mint.
@@ -349,13 +355,16 @@ async function bulkInsert(cl: { query: (t: string, p: unknown[]) => Promise<unkn
 }
 
 // Pool state via PoolManager.extsload (StateLibrary layout: pools mapping at slot 6, liquidity at +3).
-export async function readPoolState(chainId: number, manager: string, poolId: string) {
+function poolStateReads(manager: string, poolId: string): Read[] {
   const base = keccak256(encodeAbiParameters([{ type: 'bytes32' }, { type: 'uint256' }], [poolId as `0x${string}`, 6n]))
   const liqSlot = ('0x' + (BigInt(base) + 3n).toString(16).padStart(64, '0')) as `0x${string}`
-  const [s0, liq] = await Promise.all([
-    call(chainId, manager, encodeFunctionData({ abi: managerAbi, functionName: 'extsload', args: [base] })),
-    call(chainId, manager, encodeFunctionData({ abi: managerAbi, functionName: 'extsload', args: [liqSlot] })),
-  ])
+  return [base, liqSlot].map((slot) => ({
+    target: manager,
+    data: encodeFunctionData({ abi: managerAbi, functionName: 'extsload', args: [slot] }),
+  }))
+}
+
+function decodePoolState(s0: string, liq: string) {
   const w = BigInt(s0)
   const sqrtPriceX96 = w & ((1n << 160n) - 1n)
   const lpFee = Number((w >> 208n) & 0xffffffn)
@@ -367,18 +376,29 @@ export async function refreshPoolsAndRef(t: TokenRow) {
   const pools = await q<{ pool_id: string; manager: string; swaps: string }>(
     `select p.pool_id, p.manager, (select count(*) from trades tr where tr.token_id=p.token_id and tr.pool_id=p.pool_id) as swaps
      from pools p where p.token_id=$1`, [t.id])
-  for (const p of pools) {
-    try {
-      const s = await readPoolState(t.chain_id, p.manager, p.pool_id)
-      await q('update pools set sqrt_price=$3, liquidity=$4, lp_fee=$5 where token_id=$1 and pool_id=$2', [t.id, p.pool_id, s.sqrtPriceX96.toString(), s.liquidity.toString(), s.lpFee])
-    } catch { /* keep last state */ }
+  // Every pool's slot0 + liquidity and the token's totalSupply in one Multicall3 call.
+  const reads = pools.flatMap((p) => poolStateReads(p.manager, p.pool_id))
+  const supplyData = encodeFunctionData({ abi: erc20, functionName: 'totalSupply' })
+  let raw: (string | null)[] = []
+  try {
+    raw = await multicall(t.chain_id, [...reads, { target: t.address, data: supplyData }])
+  } catch { /* keep last state */ }
+  for (let i = 0; i < pools.length && raw.length; i++) {
+    const s0 = raw[2 * i]
+    const liq = raw[2 * i + 1]
+    if (s0 == null || liq == null) continue // keep last state
+    const s = decodePoolState(s0, liq)
+    await q('update pools set sqrt_price=$3, liquidity=$4, lp_fee=$5 where token_id=$1 and pool_id=$2', [t.id, pools[i].pool_id, s.sqrtPriceX96.toString(), s.liquidity.toString(), s.lpFee])
   }
   if (!t.ref_pool_pinned && pools.length) {
     const best = pools.slice().sort((a, b) => Number(b.swaps) - Number(a.swaps))[0]
     if (best.pool_id !== t.ref_pool_id) await q('update tokens set ref_pool_id=$2 where id=$1', [t.id, best.pool_id])
   }
-  try {
-    const m = await readErc20(t.chain_id, t.address)
-    if (m.totalSupply) await q('update tokens set total_supply=$2 where id=$1', [t.id, m.totalSupply])
-  } catch { /* ignore */ }
+  const supply = raw[reads.length]
+  if (supply != null) {
+    try {
+      const ts = decodeFunctionResult({ abi: erc20, functionName: 'totalSupply', data: supply as `0x${string}` }) as bigint
+      await q('update tokens set total_supply=$2 where id=$1', [t.id, ts.toString()])
+    } catch { /* ignore */ }
+  }
 }

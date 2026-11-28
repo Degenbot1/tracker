@@ -2,6 +2,7 @@
 import { q, one } from '../lib/db.ts'
 import { chain, ZERO } from '../lib/chains.ts'
 import { rpcBatch } from '../lib/rpc.ts'
+import { nativeBalances } from '../lib/multicall.ts'
 import { nativeUsdNow } from './prices.ts'
 
 export async function ensureKinds(chainId: number, addrs: string[]) {
@@ -69,12 +70,12 @@ export async function refreshNative(chainId: number) {
     `select distinct w.address from wallets w join tokens t on t.id=w.token_id
      where t.chain_id=$1 and not w.hidden and w.category in ('owned','kol','watched')`, [chainId])
   const addrs = rows.map((r) => r.address)
-  const bals = await rpcBatch<string>(chainId, addrs.map((a) => ({ method: 'eth_getBalance', params: [a, 'latest'] })))
+  const bals = await nativeBalances(chainId, addrs)
   for (let i = 0; i < addrs.length; i++) {
     if (bals[i] == null) continue
     await q(`insert into addresses (chain_id, address, native_balance, native_updated_at) values ($1,$2,$3,now())
              on conflict (chain_id, address) do update set native_balance=excluded.native_balance, native_updated_at=now()`,
-      [chainId, addrs[i], BigInt(bals[i]!).toString()])
+      [chainId, addrs[i], bals[i]!.toString()])
   }
 }
 
