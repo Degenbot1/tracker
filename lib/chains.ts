@@ -27,7 +27,7 @@ export const CHAINS: Record<number, ChainConfig> = {
     coingeckoId: 'hyperliquid',
     wrappedNative: ['0xba876237b0f021a6c6d852d6c26e107997cc5e81'],
     stables: { '0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65': { symbol: 'USDC', decimals: 6 } },
-    explorer: 'https://explorer.volta.family',
+    explorer: 'https://elysium.kinetiq.xyz/explorer',
     multicall3: '0xca11bde05977b3631167028862be2a173976ca11',
     burnAddresses: ['0x000000000000000000000000000000000000dead'],
     logsChunk: 2_000_000,
